@@ -48,7 +48,8 @@ public final class ReciprocalArraySum {
         private final double[] input;
         private double value;
 
-        ReciprocalArraySumTask(final int setStartIndexInclusive, final int setEndIndexExclusive, final double[] setInput) {
+        ReciprocalArraySumTask(final int setStartIndexInclusive, final int setEndIndexExclusive,
+                final double[] setInput) {
             this.startIndexInclusive = setStartIndexInclusive;
             this.endIndexExclusive = setEndIndexExclusive;
             this.input = setInput;
@@ -56,7 +57,7 @@ public final class ReciprocalArraySum {
 
         /**
          * Adquiere el valor calculado por esta tarea.
-         * 
+         *
          * @return El valor calculado por esta tarea
          */
         public double getValue() {
@@ -65,7 +66,7 @@ public final class ReciprocalArraySum {
 
         @Override
         protected void compute() {
-            if (endIndexExclusive - startIndexInclusive <= 10000) {  // Threshold for sequential computation
+            if (endIndexExclusive - startIndexInclusive <= 10000) { // Threshold for sequential computation
                 for (int i = startIndexInclusive; i < endIndexExclusive; i++) {
                     value += 1 / input[i];
                 }
@@ -104,41 +105,51 @@ public final class ReciprocalArraySum {
     }
 
     /**
-     * Extender para calcular la suma en paralelo utilizando múltiples tareas.
+     * Calcula la suma de los recíprocos del arreglo de entrada utilizando un número
+     * establecido de tareas.
      *
      * @param input    Arreglo de entrada
      * @param numTasks El número de tareas para crear
      * @return La suma de los recíprocos del arreglo de entrada
      */
     protected static double parManyTaskArraySum(final double[] input, final int numTasks) {
-        ForkJoinPool pool = new ForkJoinPool(numTasks);
-        ReciprocalArraySumTask[] tasks = new ReciprocalArraySumTask[numTasks];
+        // Umbral definido en el método compute()
+        final int THRESHOLD = 10000;
         int nElements = input.length;
 
-        // Crear las tareas
-        for (int i = 0; i < numTasks; i++) {
-            int start = getChunkStartInclusive(i, numTasks, nElements);
-            int end = getChunkEndExclusive(i, numTasks, nElements);
-            tasks[i] = new ReciprocalArraySumTask(start, end, input);
+        // Calcular el número de tareas necesarias basadas en el umbral
+        int numTasksNeeded = (nElements + THRESHOLD - 1) / THRESHOLD;
+
+        // Crear un arreglo para almacenar las tareas
+        ReciprocalArraySumTask[] tasks = new ReciprocalArraySumTask[numTasksNeeded];
+
+        // Crear las tareas dividiendo el trabajo en segmentos de tamaño <= THRESHOLD
+        for (int i = 0; i < numTasksNeeded; i++) {
+            int startIndex = i * THRESHOLD;
+            int endIndex = Math.min((i + 1) * THRESHOLD, nElements);
+
+            tasks[i] = new ReciprocalArraySumTask(startIndex, endIndex, input);
         }
 
-        // Ejecutar las tareas
-        for (int i = 1; i < numTasks; i++) {
-            tasks[i].fork();
+        // Crear un ForkJoinPool con el nivel de paralelismo deseado
+        ForkJoinPool pool = new ForkJoinPool(numTasks);
+
+        // Ejecutar todas las tareas en el pool
+        for (ReciprocalArraySumTask task : tasks) {
+            pool.execute(task);
         }
 
-        // Ejecutar la primera tarea de manera secuencial
-        tasks[0].compute();
-        for (int i = 1; i < numTasks; i++) {
-            tasks[i].join();
-        }
-
-        // Combinar los resultados
+        // Esperar a que todas las tareas terminen y acumular los resultados
         double sum = 0;
         for (ReciprocalArraySumTask task : tasks) {
+            task.join();
             sum += task.getValue();
         }
 
+        // Cerrar el pool
+        pool.shutdown();
+
         return sum;
     }
+
 }
